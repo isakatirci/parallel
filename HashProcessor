@@ -1,0 +1,73 @@
+Eğer kullandığınız ortamda lambda ifadeleri ile ilgili bir sıkıntı yaşıyorsanız ve `.groupBy(hash -> hash)` ifadesi derleme hatası veriyorsa, bunun yerine `Function.identity()` kullanabilirsiniz. Yani:
+
+```java
+.groupBy(Function.identity())
+```
+
+şeklinde kullanmak, aynı işlevi görecektir. Lambda ifadesi yerine, `Function.identity()` metodu, akıştaki öğelerin kendisini anahtar olarak kullanır.
+
+Eğer hala sorun yaşıyorsanız, aşağıdaki noktalara dikkat edin:
+
+1. **Java Sürümü:**  
+   Lambda ifadeleri Java 8 ve sonrasında desteklenmektedir. Java 7 veya daha düşük bir sürüm kullanıyorsanız, lambda ifadeleri kullanamazsınız.
+
+2. **Reactor Versiyonu:**  
+   Reactor Core kütüphanesinin uygun bir sürümünü kullandığınızdan emin olun. Lambda ifadelerini destekleyen ve `groupBy` metodunu içeren bir sürümü kullanıyor olmalısınız.
+
+Örneğin, `groupBy` kullanımının tam bir örnek kod parçası şu şekilde olabilir:
+
+```java
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
+import reactor.util.function.Tuples;
+
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.function.Function;
+
+public class HashProcessor {
+
+    public void process(List<String> records) {
+        Flux.fromIterable(records)
+            .parallel(10)
+            .runOn(Schedulers.boundedElastic())
+            .map(this::computeHash)
+            .groupBy(Function.identity())  // Hash değerlerine göre grupla
+            .flatMap(group ->
+                group.collectList()
+                     .map(list -> Tuples.of(group.key(), list))
+            )
+            .filter(tuple -> tuple.getT2().size() > 1)
+            .doOnNext(tuple -> System.out.println("Tekrarlayan Hash: " + tuple.getT1() 
+                                    + " | Kayıt Sayısı: " + tuple.getT2().size()))
+            .sequential()
+            .blockLast();
+    }
+
+    private String computeHash(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hashBytes);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algoritması bulunamadı.", e);
+        }
+    }
+
+    public static void main(String[] args) {
+        List<String> sampleData = List.of("ornek1", "ornek2", "ornek1", "ornek3", "ornek2");
+        new HashProcessor().process(sampleData);
+    }
+}
+```
+
+Bu örnekte:
+
+- `groupBy(Function.identity())` lambda yerine kullanılmıştır.
+- Listedeki string değerlerin SHA-256 hash'i hesaplanır.
+- Aynı hash değerine sahip kayıtlar gruplandırılarak, tekrarlayan kayıtlar ekrana yazdırılır.
+
+Kullandığınız Java ve Reactor sürümlerinde uyumluluğu kontrol ederek bu şekilde ilerleyebilirsiniz.
